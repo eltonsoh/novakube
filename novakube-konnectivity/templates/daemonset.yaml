@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    addonmanager.kubernetes.io/mode: Reconcile
+    k8s-app: {{ .Values.daemonset.name }}
+  namespace: {{ .Values.daemonset.namespace }}
+  name: {{ .Values.daemonset.name }}
+spec:
+  selector:
+    matchLabels:
+      k8s-app: {{ .Values.daemonset.name }}
+  template:
+    metadata:
+      labels:
+        k8s-app: {{ .Values.daemonset.name }}
+    spec:
+      priorityClassName: system-cluster-critical
+      tolerations:
+        - key: "CriticalAddonsOnly"
+          operator: "Exists"
+      containers:
+        - image: {{ .Values.daemonset.image.repository }}:{{ .Values.daemonset.image.tag }}
+          name: {{ .Values.daemonset.name }}
+          command: ["/proxy-agent"]
+          args: [
+                  "--logtostderr=true",
+                  "--ca-cert=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt",
+                  "--proxy-server-host={{ .Values.daemonset.proxyServerHost }}",
+                  "--proxy-server-port={{ .Values.daemonset.proxyServerPort }}",
+                  "--admin-server-port={{ .Values.daemonset.adminServerPort }}",
+                  "--health-server-port={{ .Values.daemonset.healthServerPort }}",
+                  "--service-account-token-path=/var/run/secrets/tokens/konnectivity-agent-token"
+                  ]
+          volumeMounts:
+            - mountPath: /var/run/secrets/tokens
+              name: konnectivity-agent-token
+          livenessProbe:
+            httpGet:
+              port: {{ .Values.daemonset.healthServerPort }}
+              path: /healthz
+            initialDelaySeconds: {{ .Values.daemonset.liveness.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.daemonset.liveness.timeoutSeconds }}
+      serviceAccountName: {{ .Values.daemonset.serviceAccountName }}
+      volumes:
+        - name: konnectivity-agent-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: konnectivity-agent-token
+                  audience: {{ .Values.daemonset.serviceAccountAudience }}
